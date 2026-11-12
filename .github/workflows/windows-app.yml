@@ -1,0 +1,79 @@
+# Builds the "Learn with Kiko" program for Windows from the app in this repo, and publishes it on the Releases page.
+# Run it from the Actions tab ("Run workflow") with a version like 1.0.4, or push a tag like desktop-v1.0.4.
+name: Windows app
+on:
+  push:
+    tags: ['desktop-v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version for a release, like 1.0.4 (empty = test build only)'
+        required: false
+        default: ''
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Put the app inside the Windows program
+        shell: bash
+        run: |
+          rm -rf desktop/app && mkdir -p desktop/app
+          for f in *; do
+            case "$f" in desktop|feedback|README.md) ;; *) cp -r "$f" desktop/app/ ;; esac
+          done
+          ls desktop/app
+      - name: Version
+        shell: bash
+        working-directory: desktop
+        run: |
+          V="${{ github.event.inputs.version }}"
+          if [[ "$GITHUB_REF" == refs/tags/desktop-v* ]]; then V="${GITHUB_REF_NAME#desktop-v}"; fi
+          if [ -n "$V" ]; then npm pkg set version="$V"; echo "KIKO_VERSION=$V" >> "$GITHUB_ENV"; fi
+      - name: Kiko's voice engine (the neural voice model, so any line can be said in her natural voice offline)
+        shell: bash
+        run: |
+          curl -sSL --retry 3 -o desktop/tts/kokoro.onnx https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.int8.onnx
+          echo "6e742170d309016e5891a994e1ce1559c702a2ccd0075e67ef7157974f6406cb  desktop/tts/kokoro.onnx" | sha256sum -c -
+      - name: Package for Windows
+        working-directory: desktop
+        shell: bash
+        env:
+          ONNXRUNTIME_NODE_INSTALL: skip
+        run: |
+          npm ci
+          node -e "require('./tts.js').synth('tts', 'Hello, I am Kiko.').then((a) => { console.log('voice check: samples', a.length); if (a.length < 10000) process.exit(1); })"
+          npx electron-builder --win nsis portable --publish never
+      - name: Check the program has everything it needs
+        shell: bash
+        working-directory: desktop/release/win-unpacked
+        run: |
+          for f in "Learn with Kiko.exe" resources/app.asar resources/tts/kokoro.onnx resources/tts/af_heart.bin resources/tts/vocab.json \
+                   resources/app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v6/win32/x64/onnxruntime.dll \
+                   resources/app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v6/win32/x64/onnxruntime_binding.node; do
+            [ -e "$f" ] && echo "ok  $f" || { echo "MISSING $f"; exit 1; }
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: learn-with-kiko-windows
+          path: desktop/release/*.exe
+      - name: Publish a release
+        if: env.KIKO_VERSION != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: desktop-v${{ env.KIKO_VERSION }}
+          target_commitish: ${{ github.sha }}
+          name: Learn with Kiko for Windows ${{ env.KIKO_VERSION }}
+          make_latest: true
+          files: desktop/release/*.exe
+          body: |
+            **Learn with Kiko for Windows**, Kiko by Lathan.
+            - `Learn-with-Kiko-Setup-*.exe`: installs Kiko with a desktop and Start menu shortcut.
+            - `Learn-with-Kiko-Portable-*.exe`: runs without installing (for example from a USB stick).
+            Works fully offline: Kiko's voice, the pictures and the child's progress all stay on the computer.
+            Windows may show "Windows protected your PC" the first time (the program is not code-signed yet): click More info → Run anyway.

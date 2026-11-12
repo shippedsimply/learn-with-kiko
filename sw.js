@@ -1,5 +1,5 @@
-// Learn with Kiko offline support. Version dcfeff1a57
-const CACHE = 'kiko-dcfeff1a57';
+// Learn with Kiko offline support. Version 744d1096a6
+const CACHE = 'kiko-744d1096a6';
 const SHELL = ["./","index.html","manifest.webmanifest","manifest-ios.webmanifest","icons/icon-192.png","icons/icon-512.png","icons/apple-touch-icon.png","icons/icon-maskable-512.png"];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
