@@ -1,0 +1,52 @@
+# Saves every "[Feedback] …" issue into feedback/issues.jsonl (one JSON line per issue), so it can be used later.
+# The issue text only ever reaches the script through environment variables (never pasted into the script itself).
+name: Save feedback
+on:
+  issues:
+    types: [opened, edited]
+permissions:
+  contents: write
+  issues: write
+concurrency:
+  group: feedback
+  cancel-in-progress: false
+jobs:
+  save:
+    if: startsWith(github.event.issue.title, '[Feedback]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add the note to feedback/issues.jsonl
+        env:
+          NUM: ${{ github.event.issue.number }}
+          TITLE: ${{ github.event.issue.title }}
+          BODY: ${{ github.event.issue.body }}
+          WHEN: ${{ github.event.issue.created_at }}
+          URL: ${{ github.event.issue.html_url }}
+          WHO: ${{ github.event.issue.user.login }}
+        run: |
+          mkdir -p feedback
+          python3 - <<'PY'
+          import json, os
+          rec = {'num': int(os.environ['NUM']), 'title': os.environ['TITLE'], 'body': os.environ.get('BODY', ''),
+                 'at': os.environ['WHEN'], 'url': os.environ['URL'], 'by': os.environ['WHO']}
+          path = 'feedback/issues.jsonl'
+          lines = open(path, encoding='utf-8').read().splitlines() if os.path.exists(path) else []
+          lines = [l for l in lines if l.strip() and json.loads(l).get('num') != rec['num']]  # an edited issue replaces its line
+          lines.append(json.dumps(rec, ensure_ascii=False))
+          open(path, 'w', encoding='utf-8').write('\n'.join(lines) + '\n')
+          PY
+          git config user.name "kiko-feedback"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add feedback/issues.jsonl
+          git commit -m "Feedback #${NUM}" || exit 0
+          git pull --rebase -q || true
+          git push
+      - name: Label it feedback
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NUM: ${{ github.event.issue.number }}
+        run: |
+          gh label create feedback --color FFC531 --description "Sent from the app" 2>/dev/null || true
+          gh issue edit "$NUM" --add-label feedback || true
