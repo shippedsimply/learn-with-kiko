@@ -1,6 +1,6 @@
 // Learn with Kiko for Windows: the same app in its own window, fully offline (voice, pictures and progress
-// are all on this computer). The kid lock switches the window to kiosk mode, so it fills the screen and
-// can't be closed until a grown-up unlocks it with the PIN.
+// are all on this computer). The kid lock switches the window to kiosk mode: it fills the screen, stays in front
+// (comes back if he switches away), and can't be closed or minimised until a grown-up unlocks it with the PIN.
 const { app, BrowserWindow, protocol, session, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -38,8 +38,17 @@ function createWindow() {
     setTimeout(() => { voiceEngine().then((t) => t && t.synth(TTS_DIR, 'Hi.')).catch(() => {}); }, 3000);
   });
   win.loadURL('kiko://app/index.html');
-  // while the kid lock is on, the window can't be closed
+  // while the kid lock is on: the window can't be closed or minimised, and if he switches to another program
+  // (Alt+Tab, the Windows key) Kiko comes straight back to the front
   win.on('close', (e) => { if (locked) e.preventDefault(); });
+  win.on('minimize', () => { if (locked) setTimeout(() => { if (win && !win.isDestroyed()) { win.restore(); win.focus(); } }, 50); });
+  win.on('blur', () => {
+    if (!locked) return;
+    setTimeout(() => { if (locked && win && !win.isDestroyed() && !win.isFocused()) { win.show(); win.moveTop(); win.focus(); } }, 250);
+  });
+  // Windows shutting down or signing out: let it (the lock is for him, not for Windows)
+  win.on('query-session-end', () => { locked = false; });
+  win.on('session-end', () => { locked = false; });
   // links to websites open in the normal browser, never inside Kiko
   win.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url) && !locked) shell.openExternal(url); return { action: 'deny' }; });
   win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('kiko://')) { e.preventDefault(); if (/^https?:/.test(url) && !locked) shell.openExternal(url); } });
@@ -67,9 +76,10 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('kiko:kiosk', (e, on) => {
     locked = !!on;
-    if (win) { win.setKiosk(locked); win.setAlwaysOnTop(locked, 'screen-saver'); if (locked) win.focus(); }
+    if (win) { win.setKiosk(locked); win.setAlwaysOnTop(locked, 'screen-saver'); win.setMinimizable(!locked); if (locked) win.focus(); }
     return locked;
   });
   createWindow();
 });
+app.on('before-quit', (e) => { if (locked) e.preventDefault(); });
 app.on('window-all-closed', () => app.quit());
