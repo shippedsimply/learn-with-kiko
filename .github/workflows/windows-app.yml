@@ -58,10 +58,14 @@ jobs:
                    resources/app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v6/win32/x64/onnxruntime_binding.node; do
             [ -e "$f" ] && echo "ok  $f" || { echo "MISSING $f"; exit 1; }
           done
+      # a test build (no version) keeps the .exe files for a day only: they are big (about 470 MB) and count
+      # against the account's Actions storage; a release keeps them on the Releases page instead
       - uses: actions/upload-artifact@v4
+        if: env.KIKO_VERSION == ''
         with:
           name: learn-with-kiko-windows
           path: desktop/release/*.exe
+          retention-days: 1
       - name: Publish a release
         if: env.KIKO_VERSION != ''
         uses: softprops/action-gh-release@v2

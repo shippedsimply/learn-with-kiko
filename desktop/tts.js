@@ -41,6 +41,7 @@ function speakable(text) {
     .replace(/(\d)\s*\+\s*(\d)/g, '$1 plus $2').replace(/(\d)\s*[−–-]\s*(\d)/g, '$1 minus $2')
     .replace(/(\d)\s*[×x]\s*(\d)/g, '$1 times $2').replace(/(\d)\s*÷\s*(\d)/g, '$1 divided by $2')
     .replace(/\s=\s/g, ' equals ').replace(/(\d),(\d{3})/g, '$1$2')
+    .replace(/(\d)\.(\d)/g, '$1 point $2').replace(/(\d):(\d\d)/g, '$1 $2') // 0.2 and 12:55 are one phrase, not two
     .replace(/\s+/g, ' ').trim();
 }
 
